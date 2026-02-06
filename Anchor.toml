@@ -6,26 +6,26 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-treasury = "EYpZP5URZyGy32ZaHewPRe3S2BBXBAbtqNfyA5GxphUA"
-agent_registry = "9vqS7h8TMjuu7cuzdh6NLzG4JikDi6r1saaxZdTtByYJ"
-prediction_market = "DR9aDNjhEwKmw3KmNkLiNM7Kw8mspMw4KzdhR9xXAFWP"
+treasury = "BovzoaAX7fivhW2RS9juginL3MQmT3x6tpFUwB7tjST7"
+agent_registry = "2fs7z5NAojSAgJkg3yQz5EgjBXki9tFK6sGRHVMvQfpq"
+prediction_market = "FT89ecUFydzZsT495pcGVdnPqm5ZBxLEagaYbBMYbLUX"
 
 [programs.devnet]
-treasury = "EYpZP5URZyGy32ZaHewPRe3S2BBXBAbtqNfyA5GxphUA"
-agent_registry = "9vqS7h8TMjuu7cuzdh6NLzG4JikDi6r1saaxZdTtByYJ"
-prediction_market = "DR9aDNjhEwKmw3KmNkLiNM7Kw8mspMw4KzdhR9xXAFWP"
+treasury = "BovzoaAX7fivhW2RS9juginL3MQmT3x6tpFUwB7tjST7"
+agent_registry = "2fs7z5NAojSAgJkg3yQz5EgjBXki9tFK6sGRHVMvQfpq"
+prediction_market = "FT89ecUFydzZsT495pcGVdnPqm5ZBxLEagaYbBMYbLUX"
 
 [programs.mainnet]
-treasury = "EYpZP5URZyGy32ZaHewPRe3S2BBXBAbtqNfyA5GxphUA"
-agent_registry = "9vqS7h8TMjuu7cuzdh6NLzG4JikDi6r1saaxZdTtByYJ"
-prediction_market = "DR9aDNjhEwKmw3KmNkLiNM7Kw8mspMw4KzdhR9xXAFWP"
+treasury = "BovzoaAX7fivhW2RS9juginL3MQmT3x6tpFUwB7tjST7"
+agent_registry = "2fs7z5NAojSAgJkg3yQz5EgjBXki9tFK6sGRHVMvQfpq"
+prediction_market = "FT89ecUFydzZsT495pcGVdnPqm5ZBxLEagaYbBMYbLUX"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-wallet = "~/.config/solana/id.json"
+wallet = "~/.config/solana/deployer.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
