@@ -1,17 +1,4 @@
 {
   "version": 2,
-  "name": "aethernaut",
-  "cleanUrls": true,
-  "trailingSlash": false,
-  "rewrites": [
-    { "source": "/admin", "destination": "/admin.html" },
-    { "source": "/admin/:path*", "destination": "/admin.html" },
-    { "source": "/(.*)", "destination": "/$1.html" }
-  ],
-  "env": {
-    "NEXT_PUBLIC_SOLANA_NETWORK": "devnet",
-    "NEXT_PUBLIC_TREASURY_PROGRAM_ID": "BovzoaAX7fivhW2RS9juginL3MQmT3x6tpFUwB7tjST7",
-    "NEXT_PUBLIC_REGISTRY_PROGRAM_ID": "2fs7z5NAojSAgJkg3yQz5EgjBXki9tFK6sGRHVMvQfpq",
-    "NEXT_PUBLIC_MARKET_PROGRAM_ID": "FT89ecUFydzZsT495pcGVdnPqm5ZBxLEagaYbBMYbLUX"
-  }
+  "cleanUrls": true
 }
