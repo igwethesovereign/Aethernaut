@@ -1,17 +1,12 @@
 {
   "version": 2,
   "name": "aethernaut",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/next"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/$1"
-    }
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/admin/:path*", "destination": "/admin.html" },
+    { "source": "/(.*)", "destination": "/$1.html" }
   ],
   "env": {
     "NEXT_PUBLIC_SOLANA_NETWORK": "devnet",
