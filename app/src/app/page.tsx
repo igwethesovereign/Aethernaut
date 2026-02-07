@@ -1,7 +1,7 @@
 import { WalletConnectButton } from "@/components/WalletConnectButton";
-import { TreasuryCard } from "@/components/TreasuryCard";
-import { AgentRegistryCard } from "@/components/AgentRegistryCard";
-import { PredictionMarketCard } from "@/components/PredictionMarketCard";
+import { TreasuryCardInteractive } from "@/components/TreasuryCardInteractive";
+import { AgentRegistryCardInteractive } from "@/components/AgentRegistryCardInteractive";
+import { PredictionMarketCardInteractive } from "@/components/PredictionMarketCardInteractive";
 import { DeployInfo } from "@/components/DeployInfo";
 
 export default function Home() {
@@ -52,11 +52,11 @@ export default function Home() {
           {/* Deploy Info */}
           <DeployInfo />
           
-          {/* Dashboard Cards */}
+          {/* Interactive Dashboard Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <TreasuryCard />
-            <AgentRegistryCard />
-            <PredictionMarketCard />
+            <TreasuryCardInteractive />
+            <AgentRegistryCardInteractive />
+            <PredictionMarketCardInteractive />
           </div>
           
           {/* CTA Buttons */}
