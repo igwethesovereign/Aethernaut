@@ -209,9 +209,6 @@ export default function AdminPage() {
             <p className="text-sm text-gray-500">Connected:</p>
             <p className="font-mono text-[#D4AF37]">{publicKey?.toString().slice(0, 20)}...</p>
           </div>
-          <p className="text-sm text-gray-500">
-            Expected: {ADMIN_WALLET.toString().slice(0, 8)}...{ADMIN_WALLET.toString().slice(-8)}
-          </p>
         </div>
       </div>
     );
