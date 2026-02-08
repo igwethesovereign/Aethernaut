@@ -84,10 +84,17 @@ pub mod treasury {
     }
 
     /// Execute an approved decision after voting period
+    /// SECURITY: Only treasury authority can execute decisions
     pub fn execute_decision(ctx: Context<ExecuteDecision>) -> Result<()> {
         let proposal = &mut ctx.accounts.proposal;
         let treasury = &mut ctx.accounts.treasury;
         let clock = Clock::get()?;
+        
+        // CRITICAL: Verify executor is treasury authority
+        require!(
+            ctx.accounts.executor.key() == treasury.authority,
+            TreasuryError::UnauthorizedExecutor
+        );
         
         require!(
             clock.unix_timestamp >= proposal.voting_ends_at,
@@ -319,6 +326,8 @@ pub enum TreasuryError {
     InvalidProposalStatus,
     #[msg("Decision has not been executed")]
     DecisionNotExecuted,
+    #[msg("Unauthorized executor")]
+    UnauthorizedExecutor,
 }
 
 // Events

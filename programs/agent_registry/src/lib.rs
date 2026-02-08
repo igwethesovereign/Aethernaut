@@ -57,6 +57,7 @@ pub mod agent_registry {
     }
 
     /// Create a task that agents can bid on
+    /// SECURITY: Validates deadline is in the future
     pub fn create_task(
         ctx: Context<CreateTask>,
         task_type: TaskType,
@@ -66,6 +67,19 @@ pub mod agent_registry {
         requirements: TaskRequirements,
     ) -> Result<()> {
         let task = &mut ctx.accounts.task;
+        let current_time = Clock::get()?.unix_timestamp;
+        
+        // SECURITY: Validate deadline is in the future
+        require!(
+            deadline > current_time,
+            RegistryError::InvalidDeadline
+        );
+        
+        // SECURITY: Validate deadline is not too far in the future (max 1 year)
+        require!(
+            deadline <= current_time + 31_536_000, // 365 days in seconds
+            RegistryError::DeadlineTooFar
+        );
         
         task.creator = ctx.accounts.creator.key();
         task.task_type = task_type;
@@ -74,7 +88,7 @@ pub mod agent_registry {
         task.deadline = deadline;
         task.requirements = requirements;
         task.status = TaskStatus::Open;
-        task.created_at = Clock::get()?.unix_timestamp;
+        task.created_at = current_time;
         task.assigned_agent = None;
         task.bids = vec![];
         
@@ -506,6 +520,10 @@ pub enum RegistryError {
     TaskNotAssigned,
     #[msg("Unauthorized agent")]
     UnauthorizedAgent,
+    #[msg("Invalid deadline")]
+    InvalidDeadline,
+    #[msg("Deadline too far in the future")]
+    DeadlineTooFar,
 }
 
 // Events

@@ -177,16 +177,32 @@ pub mod prediction_market {
         let winning_outcome = prediction.resolved_outcome.as_ref().unwrap();
         
         if bet.outcome == *winning_outcome {
-            // Calculate winnings
-            let total_pool = prediction.yes_pool + prediction.no_pool;
+            // Calculate winnings with overflow protection
+            let total_pool = prediction.yes_pool.checked_add(prediction.no_pool)
+                .ok_or(MarketError::CalculationOverflow)?;
             let winning_pool = match winning_outcome {
                 Outcome::Yes => prediction.yes_pool,
                 Outcome::No => prediction.no_pool,
             };
             
-            // Proportional share of total pool
+            // Proportional share of total pool with safe arithmetic
             let winnings = if winning_pool > 0 {
-                (bet.amount as u128 * total_pool as u128 / winning_pool as u128) as u64
+                let numerator = (bet.amount as u128).checked_mul(total_pool as u128)
+                    .ok_or(MarketError::CalculationOverflow)?;
+                let result = numerator.checked_div(winning_pool as u128)
+                    .ok_or(MarketError::CalculationOverflow)?;
+                
+                // Ensure result fits in u64
+                if result > u64::MAX as u128 {
+                    return Err(MarketError::WinningsTooLarge.into());
+                }
+                
+                // Apply platform fee (2.5%)
+                let fee = result.checked_mul(250).ok_or(MarketError::CalculationOverflow)?
+                    .checked_div(10000).ok_or(MarketError::CalculationOverflow)?;
+                let net_winnings = result.checked_sub(fee).ok_or(MarketError::CalculationOverflow)?;
+                
+                net_winnings as u64
             } else {
                 bet.amount
             };
@@ -444,6 +460,10 @@ pub enum MarketError {
     AlreadyClaimed,
     #[msg("Bets have already been placed")]
     BetsAlreadyPlaced,
+    #[msg("Calculation overflow")]
+    CalculationOverflow,
+    #[msg("Winnings too large")]
+    WinningsTooLarge,
 }
 
 // Events
