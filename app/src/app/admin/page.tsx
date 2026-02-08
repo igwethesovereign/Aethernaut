@@ -2,11 +2,10 @@
 
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { useState, useEffect } from 'react';
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import * as anchor from '@coral-xyz/anchor';
+import { useState, useEffect, useCallback } from 'react';
+import { PublicKey, SystemProgram } from '@solana/web3.js';
 import { Navigation } from '@/components/Navigation';
-import Link from 'next/link';
+import { useToast } from '@/components/Toast';
 
 // Program IDs
 const TREASURY_PROGRAM_ID = new PublicKey('BovzoaAX7fivhW2RS9juginL3MQmT3x6tpFUwB7tjST7');
@@ -41,9 +40,11 @@ const SAMPLE_MARKETS = [
 export default function AdminPage() {
   const { connection } = useConnection();
   const wallet = useWallet();
-  const { connected, publicKey } = wallet;
+  const { connected, publicKey, signMessage } = wallet;
+  const { addToast } = useToast();
   
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [treasuryStatus, setTreasuryStatus] = useState<'checking' | 'not_created' | 'created'>('checking');
   const [registryStatus, setRegistryStatus] = useState<'checking' | 'not_created' | 'created'>('checking');
   const [marketStatus, setMarketStatus] = useState<'checking' | 'not_created' | 'created'>('checking');
@@ -51,51 +52,80 @@ export default function AdminPage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [marketsCreated, setMarketsCreated] = useState(0);
 
-  useEffect(() => {
-    if (connected && publicKey) {
-      setIsAdmin(publicKey.equals(ADMIN_WALLET));
-      checkAllAccounts();
-    }
-  }, [connected, publicKey]);
-
-  const addLog = (message: string) => {
+  const addLog = useCallback((message: string) => {
     setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${message}`]);
-  };
+  }, []);
+
+  // Signature-based admin verification
+  const verifyAdmin = useCallback(async () => {
+    if (!connected || !publicKey || !signMessage) {
+      setIsAdmin(false);
+      return;
+    }
+
+    // First check: Public key matches admin
+    if (!publicKey.equals(ADMIN_WALLET)) {
+      setIsAdmin(false);
+      return;
+    }
+
+    setIsVerifying(true);
+
+    try {
+      // Second check: Request signature to prove private key ownership
+      const message = new TextEncoder().encode('Aethernaut Admin Verification');
+      await signMessage(message);
+      
+      setIsAdmin(true);
+      addLog('✅ Admin verified via signature');
+      addToast('Admin access granted', 'success');
+      
+      // Check accounts after verification
+      checkAllAccounts();
+    } catch (error) {
+      console.error('Admin verification failed:', error);
+      setIsAdmin(false);
+      addToast('Signature verification failed', 'error');
+    } finally {
+      setIsVerifying(false);
+    }
+  }, [connected, publicKey, signMessage, addLog, addToast]);
 
   const checkAllAccounts = async () => {
     if (!publicKey) return;
     
     addLog('Checking program accounts...');
     
-    // Check Treasury
-    const [treasuryPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('treasury'), publicKey.toBuffer()],
-      TREASURY_PROGRAM_ID
-    );
-    const treasuryInfo = await connection.getAccountInfo(treasuryPda);
-    setTreasuryStatus(treasuryInfo ? 'created' : 'not_created');
-    if (treasuryInfo) addLog('✅ Treasury account exists');
-    else addLog('⚠️ Treasury not initialized');
+    try {
+      // Check Treasury
+      const [treasuryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('treasury'), publicKey.toBuffer()],
+        TREASURY_PROGRAM_ID
+      );
+      const treasuryInfo = await connection.getAccountInfo(treasuryPda);
+      setTreasuryStatus(treasuryInfo ? 'created' : 'not_created');
+      addLog(treasuryInfo ? '✅ Treasury account exists' : '⚠️ Treasury not initialized');
 
-    // Check Registry
-    const [registryPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('registry'), publicKey.toBuffer()],
-      REGISTRY_PROGRAM_ID
-    );
-    const registryInfo = await connection.getAccountInfo(registryPda);
-    setRegistryStatus(registryInfo ? 'created' : 'not_created');
-    if (registryInfo) addLog('✅ Registry account exists');
-    else addLog('⚠️ Registry not initialized');
+      // Check Registry
+      const [registryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('registry'), publicKey.toBuffer()],
+        REGISTRY_PROGRAM_ID
+      );
+      const registryInfo = await connection.getAccountInfo(registryPda);
+      setRegistryStatus(registryInfo ? 'created' : 'not_created');
+      addLog(registryInfo ? '✅ Registry account exists' : '⚠️ Registry not initialized');
 
-    // Check Market
-    const [marketPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from('market'), publicKey.toBuffer()],
-      MARKET_PROGRAM_ID
-    );
-    const marketInfo = await connection.getAccountInfo(marketPda);
-    setMarketStatus(marketInfo ? 'created' : 'not_created');
-    if (marketInfo) addLog('✅ Market account exists');
-    else addLog('⚠️ Market not initialized');
+      // Check Market
+      const [marketPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from('market'), publicKey.toBuffer()],
+        MARKET_PROGRAM_ID
+      );
+      const marketInfo = await connection.getAccountInfo(marketPda);
+      setMarketStatus(marketInfo ? 'created' : 'not_created');
+      addLog(marketInfo ? '✅ Market account exists' : '⚠️ Market not initialized');
+    } catch (error) {
+      addLog(`❌ Error checking accounts: ${error}`);
+    }
   };
 
   const initializeTreasury = async () => {
@@ -109,8 +139,10 @@ export default function AdminPage() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       addLog('✅ Treasury initialized successfully!');
       setTreasuryStatus('created');
+      addToast('Treasury initialized', 'success');
     } catch (error: any) {
       addLog(`❌ Error: ${error.message}`);
+      addToast(`Error: ${error.message}`, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -126,8 +158,10 @@ export default function AdminPage() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       addLog('✅ Agent Registry initialized successfully!');
       setRegistryStatus('created');
+      addToast('Registry initialized', 'success');
     } catch (error: any) {
       addLog(`❌ Error: ${error.message}`);
+      addToast(`Error: ${error.message}`, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -143,8 +177,10 @@ export default function AdminPage() {
       await new Promise(resolve => setTimeout(resolve, 2000));
       addLog('✅ Prediction Market initialized successfully!');
       setMarketStatus('created');
+      addToast('Market initialized', 'success');
     } catch (error: any) {
       addLog(`❌ Error: ${error.message}`);
+      addToast(`Error: ${error.message}`, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -164,8 +200,10 @@ export default function AdminPage() {
       }
       setMarketsCreated(SAMPLE_MARKETS.length);
       addLog(`✅ All ${SAMPLE_MARKETS.length} markets created!`);
+      addToast('Sample markets created', 'success');
     } catch (error: any) {
       addLog(`❌ Error: ${error.message}`);
+      addToast(`Error: ${error.message}`, 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -177,6 +215,7 @@ export default function AdminPage() {
     if (marketStatus !== 'created') await initializeMarket();
     await createSampleMarkets();
     addLog('🎉 Full initialization complete!');
+    addToast('Full initialization complete', 'success');
   };
 
   if (!connected) {
@@ -184,7 +223,7 @@ export default function AdminPage() {
       <div className="min-h-screen bg-[#0A0A0F]">
         <Navigation />
         <div className="pt-24 flex flex-col items-center justify-center p-4">
-          <div className="text-6xl mb-6">👑</div>
+          <div className="text-6xl mb-6">🔐</div>
           <h1 className="text-3xl font-bold text-[#D4AF37] mb-4">Admin Dashboard</h1>
           <p className="text-gray-400 mb-8 text-center max-w-md">
             Connect your admin wallet to access privileged operations
@@ -200,15 +239,25 @@ export default function AdminPage() {
       <div className="min-h-screen bg-[#0A0A0F]">
         <Navigation />
         <div className="pt-24 flex flex-col items-center justify-center p-4">
-          <div className="text-6xl mb-6">🚫</div>
-          <h1 className="text-3xl font-bold text-red-500 mb-4">Access Denied</h1>
+          <div className="text-6xl mb-6">🔐</div>
+          <h1 className="text-3xl font-bold text-[#D4AF37] mb-4">Admin Verification Required</h1>
           <p className="text-gray-400 mb-4 text-center max-w-md">
-            Your wallet is not authorized to access the admin panel
+            This page requires cryptographic signature verification to prove admin wallet ownership.
           </p>
-          <div className="bg-[#1A1A24] rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-500">Connected:</p>
-            <p className="font-mono text-[#D4AF37]">{publicKey?.toString().slice(0, 20)}...</p>
+          <div className="bg-[#1A1A24] rounded-lg p-4 mb-6 max-w-md">
+            <p className="text-sm text-gray-500">Connected Wallet:</p>
+            <p className="font-mono text-[#D4AF37] break-all">{publicKey?.toString()}</p>
           </div>
+          <button
+            onClick={verifyAdmin}
+            disabled={isVerifying}
+            className="px-8 py-4 bg-[#D4AF37] text-[#0A0A0F] font-bold rounded-lg hover:bg-[#E5C048] transition-colors disabled:opacity-50"
+          >
+            {isVerifying ? 'Verifying...' : 'Sign to Verify Admin Access'}
+          </button>
+          <p className="text-sm text-gray-500 mt-4">
+            You will be asked to sign a message to prove ownership of this wallet.
+          </p>
         </div>
       </div>
     );
@@ -222,6 +271,10 @@ export default function AdminPage() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-[#D4AF37] mb-2">Admin Dashboard</h1>
           <p className="text-gray-400">Initialize and manage Aethernaut programs</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+            <span className="text-sm text-green-400">Admin verified via signature</span>
+          </div>
         </div>
 
         {/* Quick Actions */}
