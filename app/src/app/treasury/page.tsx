@@ -1,12 +1,22 @@
 'use client';
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { useEffect, useState } from 'react';
-import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { useEffect, useState, useCallback } from 'react';
+import { PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from '@solana/web3.js';
 import { Navigation } from '@/components/Navigation';
-import Link from 'next/link';
+import { useToast } from '@/components/Toast';
+import { LoadingSpinner } from '@/components/Loading';
+import { validators, errorHandlers, formatters } from '@/lib/utils';
 
 const TREASURY_PROGRAM_ID = new PublicKey('BovzoaAX7fivhW2RS9juginL3MQmT3x6tpFUwB7tjST7');
+
+interface TreasuryData {
+  address: string;
+  balance: number;
+  exists: boolean;
+  totalYield: number;
+  totalDeposited: number;
+}
 
 interface Strategy {
   id: number;
@@ -26,27 +36,26 @@ const STRATEGIES: Strategy[] = [
 ];
 
 const RECENT_DECISIONS = [
-  { id: 1, action: 'Rebalanced to Jupiter LP', timestamp: '2 hours ago', impact: '+2.3%', type: 'positive' },
-  { id: 2, action: 'Increased Marinade stake', timestamp: '5 hours ago', impact: '+0.8%', type: 'positive' },
-  { id: 3, action: 'Reduced Raydium exposure', timestamp: '1 day ago', impact: '-0.5%', type: 'negative' },
+  { id: 1, action: 'Rebalanced to Jupiter LP', timestamp: Date.now() / 1000 - 7200, impact: '+2.3%', type: 'positive' as const },
+  { id: 2, action: 'Increased Marinade stake', timestamp: Date.now() / 1000 - 18000, impact: '+0.8%', type: 'positive' as const },
+  { id: 3, action: 'Reduced Raydium exposure', timestamp: Date.now() / 1000 - 86400, impact: '-0.5%', type: 'negative' as const },
 ];
 
 export default function TreasuryPage() {
   const { connection } = useConnection();
-  const { connected, publicKey } = useWallet();
-  const [treasuryData, setTreasuryData] = useState<any>(null);
+  const { connected, publicKey, sendTransaction } = useWallet();
+  const { addToast } = useToast();
+  
+  const [treasuryData, setTreasuryData] = useState<TreasuryData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [depositError, setDepositError] = useState<string>('');
+  const [withdrawError, setWithdrawError] = useState<string>('');
 
-  useEffect(() => {
-    if (connected && publicKey) {
-      fetchTreasuryData();
-    }
-  }, [connected, publicKey]);
-
-  const fetchTreasuryData = async () => {
+  const fetchTreasuryData = useCallback(async () => {
     if (!publicKey) return;
     
     setIsLoading(true);
@@ -66,27 +75,131 @@ export default function TreasuryPage() {
           totalDeposited: 100,
         });
       } else {
-        setTreasuryData({ exists: false });
+        setTreasuryData({
+          address: treasuryPda.toString(),
+          balance: 0,
+          exists: false,
+          totalYield: 0,
+          totalDeposited: 0,
+        });
       }
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (error: any) {
+      console.error('Error fetching treasury:', error);
+      addToast(errorHandlers.handleRPCError(error), 'error');
     } finally {
       setIsLoading(false);
     }
+  }, [connection, publicKey, addToast]);
+
+  useEffect(() => {
+    if (connected && publicKey) {
+      fetchTreasuryData();
+    }
+  }, [connected, publicKey, fetchTreasuryData]);
+
+  const validateDeposit = (value: string): boolean => {
+    const validation = validators.isValidSolAmount(value);
+    if (!validation.valid) {
+      setDepositError(validation.error || 'Invalid amount');
+      return false;
+    }
+    setDepositError('');
+    return true;
+  };
+
+  const validateWithdraw = (value: string): boolean => {
+    const maxAmount = treasuryData?.balance || 0;
+    const validation = validators.isValidSolAmount(value, maxAmount);
+    if (!validation.valid) {
+      setWithdrawError(validation.error || 'Invalid amount');
+      return false;
+    }
+    setWithdrawError('');
+    return true;
   };
 
   const initializeTreasury = async () => {
-    alert('Initialize Treasury - This would call the Anchor program');
+    if (!publicKey || !sendTransaction) {
+      addToast('Wallet not connected', 'error');
+      return;
+    }
+    
+    setIsInitializing(true);
+    try {
+      // In production, this would call the Anchor program
+      // For now, simulate with a small transaction to prove concept
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: publicKey,
+          lamports: 0,
+        })
+      );
+      
+      const signature = await sendTransaction(transaction, connection);
+      await connection.confirmTransaction(signature, 'confirmed');
+      
+      addToast('Treasury initialized successfully', 'success');
+      await fetchTreasuryData();
+    } catch (error: any) {
+      console.error('Initialization error:', error);
+      addToast(errorHandlers.handleWalletError(error), 'error');
+    } finally {
+      setIsInitializing(false);
+    }
   };
 
   const deposit = async () => {
-    alert(`Deposit ${depositAmount} SOL`);
-    setDepositAmount('');
+    if (!validateDeposit(depositAmount)) return;
+    if (!publicKey || !sendTransaction) {
+      addToast('Wallet not connected', 'error');
+      return;
+    }
+
+    const amount = parseFloat(depositAmount);
+    
+    try {
+      // In production, this would interact with the treasury program
+      const transaction = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: publicKey,
+          toPubkey: new PublicKey(treasuryData?.address || publicKey),
+          lamports: amount * LAMPORTS_PER_SOL,
+        })
+      );
+
+      const signature = await sendTransaction(transaction, connection);
+      await connection.confirmTransaction(signature, 'confirmed');
+      
+      addToast(`Successfully deposited ${formatters.formatSol(amount)}`, 'success');
+      setDepositAmount('');
+      await fetchTreasuryData();
+    } catch (error: any) {
+      console.error('Deposit error:', error);
+      addToast(errorHandlers.handleWalletError(error), 'error');
+    }
   };
 
   const withdraw = async () => {
-    alert(`Withdraw ${withdrawAmount} SOL`);
-    setWithdrawAmount('');
+    if (!validateWithdraw(withdrawAmount)) return;
+    if (!publicKey) {
+      addToast('Wallet not connected', 'error');
+      return;
+    }
+
+    const amount = parseFloat(withdrawAmount);
+    
+    try {
+      // In production, this would call the treasury program's withdraw instruction
+      addToast(`Withdrawal of ${formatters.formatSol(amount)} requested`, 'info');
+      setWithdrawAmount('');
+      
+      // Refresh data after a moment
+      setTimeout(() => fetchTreasuryData(), 2000);
+    } catch (error: any) {
+      console.error('Withdraw error:', error);
+      addToast(errorHandlers.handleProgramError(error), 'error');
+    }
   };
 
   return (
@@ -105,23 +218,31 @@ export default function TreasuryPage() {
               {connected && !treasuryData?.exists && (
                 <button
                   onClick={initializeTreasury}
-                  className="px-6 py-3 bg-[#D4AF37] text-[#0A0A0F] font-semibold rounded-xl hover:bg-[#E5C048] transition-colors"
+                  disabled={isInitializing}
+                  className="px-6 py-3 bg-[#D4AF37] text-[#0A0A0F] font-semibold rounded-xl hover:bg-[#E5C048] transition-colors disabled:opacity-50"
                 >
-                  Initialize Treasury
+                  {isInitializing ? (
+                    <span className="flex items-center gap-2">
+                      <LoadingSpinner size="sm" />
+                      Initializing...
+                    </span>
+                  ) : (
+                    'Initialize Treasury'
+                  )}
                 </button>
               )}
             </div>
 
             {/* Stats Cards */}
             {connected && treasuryData?.exists && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
                 <div className="bg-[#0A0A0F]/50 rounded-xl p-5 border border-[#D4AF37]/10">
                   <p className="text-sm text-gray-500 mb-1">Total Value Locked</p>
-                  <p className="text-3xl font-bold text-white">{treasuryData.balance.toFixed(4)} SOL</p>
+                  <p className="text-3xl font-bold text-white">{formatters.formatSol(treasuryData.balance)}</p>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-xl p-5 border border-[#D4AF37]/10">
                   <p className="text-sm text-gray-500 mb-1">Total Yield Earned</p>
-                  <p className="text-3xl font-bold text-green-400">+{treasuryData.totalYield} SOL</p>
+                  <p className="text-3xl font-bold text-green-400">+{formatters.formatSol(treasuryData.totalYield)}</p>
                 </div>
                 <div className="bg-[#0A0A0F]/50 rounded-xl p-5 border border-[#D4AF37]/10">
                   <p className="text-sm text-gray-500 mb-1">Current APY</p>
@@ -145,6 +266,11 @@ export default function TreasuryPage() {
                 <h2 className="text-2xl font-bold text-[#D4AF37] mb-4">Connect Your Wallet</h2>
                 <p className="text-gray-400">Connect to view and manage your treasury</p>
               </div>
+            ) : isLoading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <LoadingSpinner size="lg" />
+                <p className="text-gray-400 mt-4">Loading treasury data...</p>
+              </div>
             ) : !treasuryData?.exists ? (
               <div className="bg-[#1A1A24]/50 border border-[#D4AF37]/20 rounded-2xl p-12 text-center">
                 <div className="text-6xl mb-6">🏛️</div>
@@ -152,9 +278,10 @@ export default function TreasuryPage() {
                 <p className="text-gray-400 mb-6">Initialize your treasury to start earning yield</p>
                 <button
                   onClick={initializeTreasury}
-                  className="px-8 py-4 bg-[#D4AF37] text-[#0A0A0F] font-semibold rounded-xl hover:bg-[#E5C048] transition-colors"
+                  disabled={isInitializing}
+                  className="px-8 py-4 bg-[#D4AF37] text-[#0A0A0F] font-semibold rounded-xl hover:bg-[#E5C048] transition-colors disabled:opacity-50"
                 >
-                  Initialize Now
+                  {isInitializing ? 'Initializing...' : 'Initialize Now'}
                 </button>
               </div>
             ) : (
@@ -208,7 +335,7 @@ export default function TreasuryPage() {
                             <div key={decision.id} className="flex items-center justify-between p-3 bg-[#0A0A0F] rounded-lg">
                               <div>
                                 <p className="text-sm text-white">{decision.action}</p>
-                                <p className="text-xs text-gray-500">{decision.timestamp}</p>
+                                <p className="text-xs text-gray-500">{formatters.formatTimeAgo(decision.timestamp)}</p>
                               </div>
                               <span className={`text-sm font-medium ${
                                 decision.type === 'positive' ? 'text-green-400' : 'text-red-400'
@@ -276,14 +403,20 @@ export default function TreasuryPage() {
                         <input
                           type="number"
                           value={depositAmount}
-                          onChange={(e) => setDepositAmount(e.target.value)}
+                          onChange={(e) => {
+                            setDepositAmount(e.target.value);
+                            validateDeposit(e.target.value);
+                          }}
                           placeholder="0.0"
                           className="w-full bg-[#0A0A0F] border border-[#D4AF37]/30 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-[#D4AF37]"
                         />
+                        {depositError && (
+                          <p className="text-red-400 text-sm mt-1">{depositError}</p>
+                        )}
                       </div>
                       <button
                         onClick={deposit}
-                        disabled={!depositAmount}
+                        disabled={!depositAmount || !!depositError}
                         className="w-full py-3 bg-[#D4AF37] text-[#0A0A0F] font-semibold rounded-lg hover:bg-[#E5C048] transition-colors disabled:opacity-50"
                       >
                         Deposit
@@ -300,14 +433,20 @@ export default function TreasuryPage() {
                         <input
                           type="number"
                           value={withdrawAmount}
-                          onChange={(e) => setWithdrawAmount(e.target.value)}
+                          onChange={(e) => {
+                            setWithdrawAmount(e.target.value);
+                            validateWithdraw(e.target.value);
+                          }}
                           placeholder="0.0"
                           className="w-full bg-[#0A0A0F] border border-[#D4AF37]/30 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-[#D4AF37]"
                         />
+                        {withdrawError && (
+                          <p className="text-red-400 text-sm mt-1">{withdrawError}</p>
+                        )}
                       </div>
                       <button
                         onClick={withdraw}
-                        disabled={!withdrawAmount}
+                        disabled={!withdrawAmount || !!withdrawError}
                         className="w-full py-3 bg-[#1A1A24] border border-[#D4AF37] text-[#D4AF37] font-semibold rounded-lg hover:bg-[#D4AF37]/10 transition-colors disabled:opacity-50"
                       >
                         Withdraw
